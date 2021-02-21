@@ -196,8 +196,38 @@ class Ui_EnvDevice(QtWidgets.QMainWindow):
 class Backend(QtCore.QThread):
     _enviroval = QtCore.pyqtSignal(list)
 
-    def run(self):
+    def __init__(self):
+        self.encfound = True
+        try:
+            self.enc = serial.Serial(port='COM5',baudrate=38400,parity=serial.PARITY_NONE,stopbits=serial.STOPBITS_ONE,bytesize=serial.EIGHTBITS,rtscts=True) #Optical Encoder config E1090BK25 chang chun hua te guang dian   
+        except:
+            self.encfound = False
+
+'''
+        ports = list(serial.tools.list_ports.comports()) #find all coms
+        for comnum, comname, comadd in ports:  #find comport of seeeduino nano
+            if "Silicon Labs CP210x USB to UART Bridge" in comname:
+                self.com = serial.Serial(port=comnum,baudrate=38400,parity=serial.PARITY_NONE,stopbits=serial.STOPBITS_ONE,bytesize=serial.EIGHTBITS,rtscts=True)
+
+'''
+    @property
+    def readval(self):
+        if self.encfound == True:
+            self.enc.flushInput()
+            self.encraw=self.enc.readline(5) # read 5 btyes of data {1: 0xff, 2: 0x81, 3: 2bits high [4pos], 4: 8bits low [255pos]}
+            self.enc.flushInput()
+                
+            self.enchigh = int.from_bytes(self.encraw[2:3], byteorder='big')
+            self.enclow = int.from_bytes(self.encraw[3:4], byteorder='big')
+            self.encdeg = (self.enchigh*90) + round((self.enclow*90/256),1)
+        else:
+            self.encdeg = 0
+
+        return self.encdeg
+
+    def run(self): #QThread run
         while True:
+            # self.vals = self.readval()
             self._enviroval.emit([1,2,3,4,5,5,6])
 
             QtTest.QTest.qWait(1000)
