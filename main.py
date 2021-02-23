@@ -6,11 +6,10 @@
 #
 # WARNING! All changes made in this file will be lost!
 
-import serial, serial.tools.list_ports
+import serial, serial.tools.list_ports, configparser, os, sip
 from numpy import mean
 from PyQt5 import QtCore, QtGui, QtWidgets, QtTest
 from PyQt5.QtCore import pyqtSignal, QThread
-import sip
 
 class Ui_EnvDevice(QtWidgets.QMainWindow):
 
@@ -196,39 +195,80 @@ class Ui_EnvDevice(QtWidgets.QMainWindow):
 class Backend(QtCore.QThread):
     _enviroval = QtCore.pyqtSignal(list)
 
-    def __init__(self):
-        self.encfound = True
-        try:
-            self.enc = serial.Serial(port='COM5',baudrate=38400,parity=serial.PARITY_NONE,stopbits=serial.STOPBITS_ONE,bytesize=serial.EIGHTBITS,rtscts=True) #Optical Encoder config E1090BK25 chang chun hua te guang dian   
-        except:
-            self.encfound = False
+    packet=bytearray()
+    packet.append(0x01)
+    packet.append(0x03)
+    packet.append(0x00)
+    packet.append(0x00)
+    packet.append(0x00)
+    packet.append(0x07)
+    packet.append(0x04)
+    packet.append(0x08)
 
-'''
+    def __init__(self):
+        super(Backend,self).__init__()
+        self.envfound = True
+
+        self.config = configparser.ConfigParser()
+
+        if not os.path.exists('config.ini'):
+            self.config['settings'] = {'COMPORT':'COM5','baudrate':'9600'}
+            self.config.write(open('config.ini','w'))
+        else:      
+            self.config.read('config.ini')
+
+        try:
+            self.env = serial.Serial(port=self.config['settings']['COMPORT'],baudrate=int(config['settings']['baudrate']),parity=serial.PARITY_NONE,stopbits=serial.STOPBITS_ONE,bytesize=serial.EIGHTBITS,rtscts=True) 
+            #https://item.taobao.com/item.htm?spm=a1z09.2.0.0.97732e8dnhP6jh&id=588484209663&_u=i2mqorj79cd8  
+        except:
+            self.envfound = False
+
+        print(self.envfound)
+    '''
         ports = list(serial.tools.list_ports.comports()) #find all coms
         for comnum, comname, comadd in ports:  #find comport of seeeduino nano
             if "Silicon Labs CP210x USB to UART Bridge" in comname:
                 self.com = serial.Serial(port=comnum,baudrate=38400,parity=serial.PARITY_NONE,stopbits=serial.STOPBITS_ONE,bytesize=serial.EIGHTBITS,rtscts=True)
 
-'''
-    @property
+    '''
     def readval(self):
-        if self.encfound == True:
-            self.enc.flushInput()
-            self.encraw=self.enc.readline(5) # read 5 btyes of data {1: 0xff, 2: 0x81, 3: 2bits high [4pos], 4: 8bits low [255pos]}
-            self.enc.flushInput()
-                
-            self.enchigh = int.from_bytes(self.encraw[2:3], byteorder='big')
-            self.enclow = int.from_bytes(self.encraw[3:4], byteorder='big')
-            self.encdeg = (self.enchigh*90) + round((self.enclow*90/256),1)
-        else:
-            self.encdeg = 0
+        if self.envfound == True:
+            self.env.flushInput()
+            self.env.write(self.packet)
+            QtTest.QTest.qWait(70)
+            self.envraw=self.env.readline(17) # read 17 bytes of data {1: 0xff, 2: 0x81, 3: 2bits high [4pos], 4: 8bits low [255pos]}
+            self.env.flushInput()
+            
+            self.eCO2 = int.from_bytes(self.encraw[2:4], byteorder='big')
+            self.eCH2O = int.from_bytes(self.encraw[4:6], byteorder='big')
+            self.tvoc = int.from_bytes(self.encraw[6:8], byteorder='big')
+            self.pm25 = int.from_bytes(self.encraw[8:10], byteorder='big')
+            self.pm10 = int.from_bytes(self.encraw[10:12], byteorder='big')
 
-        return self.encdeg
+            self.temphigh = int.from_bytes(self.encraw[12:13], byteorder='big')
+            self.templow = int.from_bytes(self.encraw[13:14], byteorder='big')
+
+            if bool(self.temphigh//128) == True:
+                self.temp = 0 - (self.temphigh%128 + (self.templow*0.1))
+            else:
+                self.temp = self.temphigh%128 + (self.templow*0.1)
+
+            self.humidhigh = int.from_bytes(self.encraw[14:15], byteorder='big')
+            self.humidlow = int.from_bytes(self.encraw[15:16], byteorder='big')
+
+            if bool(self.humidhigh//128) == True:
+                self.humid = 0 - (self.humidhigh%128 + (self.humidlow*0.1))
+            else:
+                self.humid = self.humidhigh%128 + (self.humidlow*0.1)
+
+            return [self.eCO2, self.eCH2O, self.tvoc, self.pm25, self.pm10, self.temp, self.humid]
+        else:
+            return [1,2,3,4,5,6,7]
 
     def run(self): #QThread run
         while True:
-            # self.vals = self.readval()
-            self._enviroval.emit([1,2,3,4,5,5,6])
+            self.vals = self.readval()
+            self._enviroval.emit(self.vals)
 
             QtTest.QTest.qWait(1000)
 
