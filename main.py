@@ -239,14 +239,8 @@ class Backend(QtCore.QThread):
         if self.envfound == True:
             self.env.flushInput()
             self.env.write(self.packet)
-            QtTest.QTest.qWait(200)
-            # self.bytestoread = self.env.inWaiting()
-            
+            QtTest.QTest.qWait(200)            
             self.envraw=self.env.read(19) # read 19 bytes of data {1: 0xff, 2: 0x81, 3: 2bits high [4pos], 4: 8bits low [255pos]}
-            # self.env.flushInput()
-            
-            print(self.envraw)
-            print(len(self.envraw))
 
             self.eCO2 = int.from_bytes(self.envraw[3:5], byteorder='big')
             self.eCH2O = int.from_bytes(self.envraw[5:7], byteorder='big')
