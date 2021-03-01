@@ -9,7 +9,7 @@
 import serial, serial.tools.list_ports, configparser, os, sip
 from numpy import mean
 from PyQt5 import QtCore, QtGui, QtWidgets, QtTest
-from PyQt5.QtCore import pyqtSignal, QThread
+from PyQt5.QtCore import QThread, pyqtSignal
 
 class Ui_EnvDevice(QtWidgets.QMainWindow):
 
@@ -208,7 +208,6 @@ class Backend(QtCore.QThread):
     def __init__(self):
         super(Backend,self).__init__()
         self.envfound = True
-        self.encraw = []
         self.config = configparser.ConfigParser()
 
         if not os.path.exists('config.ini'):
@@ -223,7 +222,7 @@ class Backend(QtCore.QThread):
                                         parity=serial.PARITY_NONE,
                                         stopbits=serial.STOPBITS_ONE,
                                         bytesize=serial.EIGHTBITS,
-                                        timeout=1) 
+                                        timeout=0.5) 
             #https://item.taobao.com/item.htm?spm=a1z09.2.0.0.97732e8dnhP6jh&id=588484209663&_u=i2mqorj79cd8  
         except:
             self.envfound = False
@@ -240,44 +239,36 @@ class Backend(QtCore.QThread):
         if self.envfound == True:
             self.env.flushInput()
             self.env.write(self.packet)
-            QtTest.QTest.qWait(100)
-            self.envraw=self.env.readline(17) # read 17 bytes of data {1: 0xff, 2: 0x81, 3: 2bits high [4pos], 4: 8bits low [255pos]}
-            self.env.flushInput()
+            QtTest.QTest.qWait(200)
+            # self.bytestoread = self.env.inWaiting()
             
-            # print(self.packet)
+            self.envraw=self.env.read(19) # read 19 bytes of data {1: 0xff, 2: 0x81, 3: 2bits high [4pos], 4: 8bits low [255pos]}
+            # self.env.flushInput()
+            
             print(self.envraw)
-            self.eCO2 = int.from_bytes(self.encraw[2:3], byteorder='big')
-            self.eCO2low = int.from_bytes(self.encraw[3:4], byteorder='big')
-            self.eCH2O = int.from_bytes(self.encraw[4:6], byteorder='big')
-            self.tvoc = int.from_bytes(self.encraw[6:8], byteorder='big')
-            self.pm25 = int.from_bytes(self.encraw[8:10], byteorder='big')
-            self.pm10 = int.from_bytes(self.encraw[10:12], byteorder='big')
+            print(len(self.envraw))
 
-            self.temphigh = int.from_bytes(self.encraw[12:13], byteorder='big')
-            self.templow = int.from_bytes(self.encraw[13:14], byteorder='big')
+            self.eCO2 = int.from_bytes(self.envraw[3:5], byteorder='big')
+            self.eCH2O = int.from_bytes(self.envraw[5:7], byteorder='big')
+            self.tvoc = int.from_bytes(self.envraw[7:9], byteorder='big')
+            self.pm25 = int.from_bytes(self.envraw[9:11], byteorder='big')
+            self.pm10 = int.from_bytes(self.envraw[11:13], byteorder='big')
 
-            if bool(self.temphigh//128) == True:
-                self.temp = 0 - (self.temphigh%128 + (self.templow*0.1))
-            else:
-                self.temp = self.temphigh%128 + (self.templow*0.1)
+            self.temp = int.from_bytes(self.envraw[13:15], byteorder='big')
+            self.humid = int.from_bytes(self.envraw[15:17], byteorder='big')
 
-            self.humidhigh = int.from_bytes(self.encraw[14:15], byteorder='big')
-            self.humidlow = int.from_bytes(self.encraw[15:16], byteorder='big')
+            return [self.eCO2, self.eCH2O, self.tvoc, self.pm25, self.pm10, self.temp/100, self.humid/100]
 
-            if bool(self.humidhigh//128) == True:
-                self.humid = 0 - (self.humidhigh%128 + (self.humidlow*0.1))
-            else:
-                self.humid = self.humidhigh%128 + (self.humidlow*0.1)
-
-            return [self.eCO2, self.eCH2O, self.tvoc, self.pm25, self.pm10, self.temp, self.humid]
-            # return [1,2,3,4,5,6,7]
         else:
-            return [1,2,3,4,5,6,7]
+            return [0,0,0,0,0,0,0]
 
     def run(self): #QThread run
         while True:
             self.vals = self.readval()
-            self._enviroval.emit(self.vals)
+            if self.vals == [0,0,0,0,0,0,0]:
+                pass
+            else:
+                self._enviroval.emit(self.vals)
 
             QtTest.QTest.qWait(1000)
 
