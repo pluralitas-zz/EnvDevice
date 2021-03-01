@@ -208,7 +208,7 @@ class Backend(QtCore.QThread):
     def __init__(self):
         super(Backend,self).__init__()
         self.envfound = True
-
+        self.encraw = []
         self.config = configparser.ConfigParser()
 
         if not os.path.exists('config.ini'):
@@ -218,7 +218,12 @@ class Backend(QtCore.QThread):
             self.config.read('config.ini')
 
         try:
-            self.env = serial.Serial(port=self.config['settings']['COMPORT'],baudrate=int(config['settings']['baudrate']),parity=serial.PARITY_NONE,stopbits=serial.STOPBITS_ONE,bytesize=serial.EIGHTBITS,rtscts=True) 
+            self.env = serial.Serial(port=self.config['settings']['COMPORT'],
+                                        baudrate=int(self.config['settings']['baudrate']),
+                                        parity=serial.PARITY_NONE,
+                                        stopbits=serial.STOPBITS_ONE,
+                                        bytesize=serial.EIGHTBITS,
+                                        timeout=1) 
             #https://item.taobao.com/item.htm?spm=a1z09.2.0.0.97732e8dnhP6jh&id=588484209663&_u=i2mqorj79cd8  
         except:
             self.envfound = False
@@ -235,11 +240,14 @@ class Backend(QtCore.QThread):
         if self.envfound == True:
             self.env.flushInput()
             self.env.write(self.packet)
-            QtTest.QTest.qWait(70)
+            QtTest.QTest.qWait(100)
             self.envraw=self.env.readline(17) # read 17 bytes of data {1: 0xff, 2: 0x81, 3: 2bits high [4pos], 4: 8bits low [255pos]}
             self.env.flushInput()
             
-            self.eCO2 = int.from_bytes(self.encraw[2:4], byteorder='big')
+            # print(self.packet)
+            print(self.envraw)
+            self.eCO2 = int.from_bytes(self.encraw[2:3], byteorder='big')
+            self.eCO2low = int.from_bytes(self.encraw[3:4], byteorder='big')
             self.eCH2O = int.from_bytes(self.encraw[4:6], byteorder='big')
             self.tvoc = int.from_bytes(self.encraw[6:8], byteorder='big')
             self.pm25 = int.from_bytes(self.encraw[8:10], byteorder='big')
@@ -262,6 +270,7 @@ class Backend(QtCore.QThread):
                 self.humid = self.humidhigh%128 + (self.humidlow*0.1)
 
             return [self.eCO2, self.eCH2O, self.tvoc, self.pm25, self.pm10, self.temp, self.humid]
+            # return [1,2,3,4,5,6,7]
         else:
             return [1,2,3,4,5,6,7]
 
